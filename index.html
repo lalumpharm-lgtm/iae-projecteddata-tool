@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NIRF Target Rank Copilot</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--tx:#1b2030;--mut:#667;--bd:#dde1ec;--ac:#2f5bea;--ok:#12805c;--bad:#c2410c;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141c;--card:#1c2030;--tx:#e8ebf5;--mut:#9aa3bd;--bd:#2c3248;--ac:#6f93ff;--ok:#43c59e;--bad:#fb923c;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+.w{max-width:1050px;margin:auto}h1{font-size:22px;margin:0 0 2px}h2{font-size:16px;margin:0 0 10px}.s{color:var(--mut);font-size:13px}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin:14px 0}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
+select,input[type=number],input[type=file]{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+.t{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:6px 8px;border-bottom:1px solid var(--bd);text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}
+td input{width:96px;padding:4px 6px}.k{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.k div{background:var(--bg);border-radius:10px;padding:10px}.k b{display:block;font-size:20px}
+.ok{color:var(--ok)}.bad{color:var(--bad)}ul{margin:6px 0 0;padding-left:18px}li{margin:4px 0}.st{font-size:12px;color:var(--mut);margin-top:6px}
+</style></head><body><div class="w">
+<h1>NIRF Target Rank Copilot</h1>
+<div class="s">Compare your last 3 years with the institute at your target rank, and project what is needed in the coming ranking year.</div>
+
+<div class="c"><h2>1. Category and ranking year</h2><div class="g">
+<div><label>Select category</label><select id="cat"></select></div>
+<div><label>Present ranking year</label><select id="ry"></select></div>
+<div><label>Saved data (kept in this browser)</label><button style="padding:8px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);cursor:pointer" onclick="try{localStorage.removeItem('nirfcopilot')}catch(e){};location.reload()">Clear all entered data</button></div>
+</div></div>
+
+<div class="c"><h2>2. Your institute: ranking scores (each parameter out of 100)</h2><div class="t" id="sc"></div>
+<div class="s" style="margin-top:6px">Overall score = TLR×0.30 + RPC×0.30 + GO×0.20 + OI×0.10 + PR×0.10. The last row is the overall score of the institute at your target rank in each year (from the NIRF list).</div></div>
+
+<div class="c"><h2>3. Your institute: data elements (last 3 years)</h2><div class="t" id="own"></div></div>
+<div class="c"><h2>4. Target institute: same data elements (last 3 years)</h2><div class="t" id="tgt"></div>
+<div class="s" style="margin-top:6px">You can enter this later. Use the institute sitting at your target rank, from its published NIRF data. Entries are saved in this browser and the gap analysis and suggestions update automatically.</div></div>
+
+<div class="c"><h2>5. Set target</h2><div class="g">
+<div><label>Present rank</label><input type="number" id="pr" min="1" value="67"></div>
+<div><label>Target rank</label><input type="number" id="tr" min="1" value="50"></div>
+<div><label>Target ranking year</label><select id="ty"></select></div>
+<div><label>Cut-off drift per year (if fewer than 2 cut-offs entered)</label><input type="number" id="dr" step="0.1" value="1"></div>
+<div><label>Safety buffer (overall marks)</label><input type="number" id="bf" step="0.1" value="1"></div>
+</div></div>
+
+<div class="c" id="out"></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const CATS=["Overall","University","Engineering","College","Management","Pharmacy","Medical","Dental","Law","Architecture and Planning","Agriculture and Allied Sectors","Research Institutions","Innovation","Open University","Skill University","State Public University"];
+const P=["TLR","RPC","GO","OI","PR"],W={TLR:.3,RPC:.3,GO:.2,OI:.1,PR:.1};
+const NM={TLR:"Teaching, Learning and Resources",RPC:"Research and Professional Practice",GO:"Graduation Outcomes",OI:"Outreach and Inclusivity",PR:"Perception"};
+const EASE={TLR:.8,RPC:.5,GO:.6,OI:1,PR:.2};
+const LV={TLR:"Raise PhD-qualified and experienced faculty share, keep student-faculty ratio healthy, plan capital and operational spend per student.",
+RPC:"More quality publications and citations per faculty, regular patent filing and publication, more funded projects and consultancy.",
+GO:"Improve placement and higher-study share, lift the median salary, raise PhD graduates and graduation in minimum time.",
+OI:"Improve women, outside-state, economically and socially challenged student share and accessibility facilities.",
+PR:"Build academic and employer visibility; improves slowly with results in other areas."};
+const EL=[["intake","Sanctioned intake","n"],["str","Total student strength","n"],["phd","Full-time PhD students","n"],["fac","Total eligible faculty","n"],["bc","Per-student capital (BC) expenditure, Rs","n"],["bo","Per-student operational (BO) expenditure, Rs","n"],["grad","% students graduated (in minimum time)","%"],["plc","% students placed","%"],["hs","% students in higher studies","%"],["sal","Median salary, Rs per year","n"],["phdg","Average PhD students graduated per year","n"],["wf","% women faculty","%"],["fri","% fee reimbursement from institute","%"],["frg","% fee reimbursement from Govt","%"],["frp","% fee reimbursement from private bodies","%"]];
+const S={},cut={};
+CATS.forEach(c=>$("cat").add(new Option(c,c)));$("cat").value="Engineering";
+for(let y=2023;y<=2026;y++)$("ry").add(new Option(y,y));$("ry").value=2025;
+S["Engineering"+"o2024"]={TLR:68.19,RPC:24.56,GO:59.97,OI:46.77,PR:54.15,Rank:67};
+S["Engineering"+"o2025"]={TLR:70.17,RPC:26.31,GO:60.36,OI:47.52,PR:48.83,Rank:67,intake:1704,str:6232,phd:127,fac:468,bc:19007,bo:152600,grad:92.8,plc:73,hs:6.6,sal:700000,phdg:55.3,fri:3.8,frg:17,frp:0.05};
+const Y3=()=>{const r=+$("ry").value;return[r-2,r-1,r]};
+const R=(w,y)=>{const k=$("cat").value+w+y;return S[k]=S[k]||{}};
+const fmt=v=>v==null||isNaN(v)?"-":Math.abs(v)>=1000?Math.round(v).toLocaleString("en-IN"):(+v).toFixed(2);
+function ov(y){const d=R("o",y);return P.every(p=>d[p]!=null)?P.reduce((a,p)=>a+d[p]*W[p],0):null}
+function reg(pts){const n=pts.length;if(n<2)return null;const mx=pts.reduce((a,p)=>a+p[0],0)/n,my=pts.reduce((a,p)=>a+p[1],0)/n;let nu=0,de=0;pts.forEach(p=>{nu+=(p[0]-mx)*(p[1]-my);de+=(p[0]-mx)**2});const s=de?nu/de:0;return{s,f:x=>my+s*(x-mx)}}
+function proj(w,e,T,pct){const pts=Y3().map(y=>[y,R(w,y)[e]]).filter(p=>p[1]!=null&&p[1]!=="");if(!pts.length)return null;const g=reg(pts);let v=g?g.f(T):pts[0][1];if(pct)v=Math.min(100,Math.max(0,v));return Math.max(0,v)}
+function inp(w,y,e,v){return`<td><input type="number" step="any" data-w="${w}" data-y="${y}" data-e="${e}" value="${v??""}"></td>`}
+function build(){
+ const Y=Y3(),th=Y.map(y=>`<th>${y}</th>`).join("");
+ let h=`<table><tr><th>Parameter (score out of 100)</th>${th}</tr>`;
+ P.forEach(p=>h+=`<tr><td title="${NM[p]}">${p} (weight ${W[p]})</td>`+Y.map(y=>inp("o",y,p,R("o",y)[p])).join("")+"</tr>");
+ P.forEach(p=>h+=`<tr><td class="s">Weighted ${p} (score × ${W[p]})</td>`+Y.map(y=>`<td id="w${p}${y}">-</td>`).join("")+"</tr>");
+ h+=`<tr><td><b>Overall score (sum of weighted)</b></td>`+Y.map(y=>`<td id="ov${y}"><b>-</b></td>`).join("")+"</tr>";
+ h+=`<tr><td>Rank</td>`+Y.map(y=>inp("o",y,"Rank",R("o",y).Rank)).join("")+"</tr>";
+ h+=`<tr><td>Overall score at target rank</td>`+Y.map(y=>`<td><input type="number" step="0.01" data-c="${y}" value="${cut[$("cat").value+y]??""}"></td>`).join("")+"</tr></table>";
+ $("sc").innerHTML=h;
+ ["own","tgt"].forEach(id=>{const w=id=="own"?"o":"t";let t=`<table><tr><th>Data element</th>${th}</tr>`;
+  EL.forEach(([e,l])=>t+=`<tr><td>${l}</td>`+Y.map(y=>inp(w,y,e,R(w,y)[e])).join("")+"</tr>");$(id).innerHTML=t+"</table>"});
+ calc()}
+function save(){try{localStorage.setItem("nirfcopilot",JSON.stringify({S,cut,p:[$("pr").value,$("tr").value]}))}catch(e){}}
+function tr3(w,e){const v=Y3().map(y=>R(w,y)[e]).filter(x=>x!=null&&x!=="");if(v.length<2)return{c:"Not enough data",ch:null};
+ const d=[];for(let i=1;i<v.length;i++)d.push(v[i]-v[i-1]);const m=v.reduce((a,b)=>a+b,0)/v.length||1,tol=Math.abs(m)*.01;
+ const ch=v[0]?(v[v.length-1]-v[0])/Math.abs(v[0])*100:null;let c;
+ if(d.every(x=>x>tol))c="Consistently improving";else if(d.every(x=>x<-tol))c="Consistently declining";else if(ch!=null&&Math.abs(ch)<2)c="Stable";else c="Fluctuating";
+ return{c,ch}}
+const cls=c=>c.includes("improving")?"ok":c.includes("declining")?"bad":"";
+function calc(){save();
+ const Y=Y3(),r=+$("ry").value,T=+$("ty").value,n=T-r;
+ Y.forEach(y=>{const d=R("o",y);P.forEach(p=>{const c=$("w"+p+y);if(c)c.textContent=d[p]!=null?(d[p]*W[p]).toFixed(2):"-"});const v=ov(y);const c=$("ov"+y);if(c)c.innerHTML="<b>"+(v==null?"-":v.toFixed(2))+"</b>"});
+ const cur=ov(r),o=$("out");
+ if(cur==null){o.innerHTML="<h2>Analysis</h2><div class='s'>Enter the five parameter scores for the present ranking year.</div>";return}
+ const hist=Y.map(y=>[y,ov(y)]).filter(p=>p[1]!=null),own=reg(hist),slope=own?own.s:0;
+ const cp=Y.map(y=>[y,cut[$("cat").value+y]]).filter(p=>p[1]!=null&&p[1]!=="");
+ let cutT,drift,src;const pr=+$("pr").value,tr=+$("tr").value;
+ if(cp.length>=2){const g=reg(cp);drift=g.s;cutT=g.f(T);src="trend of entered cut-offs"}
+ else if(cp.length==1){drift=+$("dr").value;cutT=cp[0][1]+drift*(T-cp[0][0]);src="one cut-off plus assumed drift"}
+ else{drift=+$("dr").value;cutT=cur+0.27*(pr-tr)+drift*n;src="estimate of about 0.27 overall marks per rank plus drift; enter real cut-offs for accuracy"}
+ const target=cutT+(+$("bf").value),gap=target-cur,perYr=gap/n;
+ // allocate weighted gain across parameters
+ const cr={},cap={},al={};P.forEach(p=>{cr[p]=R("o",r)[p];al[p]=0;cap[p]=Math.max(0,W[p]*(90-cr[p]))});
+ let need=Math.max(0,gap);
+ for(let k=0;k<8&&need>1e-6;k++){let sw=0;const w={};P.forEach(p=>{w[p]=(cap[p]-al[p])*EASE[p];sw+=w[p]});if(!sw)break;let u=0;P.forEach(p=>{const a=Math.min(cap[p]-al[p],need*w[p]/sw);al[p]+=a;u+=a});need-=u}
+ const infeasible=need>0.01;
+ let h=`<h2>6. Copilot analysis: rank ${pr} to ${tr} by ${T}</h2><div class="k">
+ <div>Present overall score (${r})<b>${cur.toFixed(2)}</b></div>
+ <div>Projected cut-off ${T}<b>${cutT.toFixed(2)}</b></div>
+ <div>Target overall score<b>${target.toFixed(2)}</b></div>
+ <div>Overall score gap to close<b class="${gap>0?"bad":"ok"}">${gap.toFixed(2)}</b></div>
+ <div>Overall score needed per year<b>${perYr.toFixed(2)}</b></div>
+ <div>Your past overall gain / yr<b>${slope.toFixed(2)}</b></div></div>
+ <div class="s" style="margin-top:6px">Cut-off basis: ${src}. Range: optimistic ${(cutT-.5*Math.abs(drift||1)*n).toFixed(1)}, expected ${cutT.toFixed(1)}, conservative ${(cutT+.5*Math.abs(drift||1)*n+1).toFixed(1)}.</div>
+ <h2 style="margin-top:16px">Parameter-wise required improvement for ${T}</h2><div class="t"><table><tr><th>Parameter</th><th>Weight</th><th>Present score (/100)</th><th>Required score ${T} (/100)</th><th>Overall marks gained</th><th>Ease (0-1)</th></tr>`;
+ P.forEach(p=>{const req=cr[p]+al[p]/W[p];h+=`<tr><td title="${NM[p]}">${p}</td><td>${W[p]}</td><td>${cr[p].toFixed(2)}</td><td><b>${req.toFixed(2)}</b></td><td class="ok">+${al[p].toFixed(2)}</td><td><input type="number" step="0.1" min="0" max="1" value="${EASE[p]}" data-ease="${p}"></td></tr>`});
+ h+=`</table></div><div class="s">The gap is split by headroom and ease, each score capped at 90 out of 100. Adjust ease to match your institute.</div>`;
+ // data element comparison
+ const V={};
+ const ls=(w,f)=>{const a=EL.filter(([e])=>f(tr3(w,e))).map(x=>x[1]);return a.length?a.join("; "):"none"};
+ h+=`<h2 style="margin-top:16px">Gap analysis from the 3-year data</h2><div class="t"><table><tr><th>Data element</th><th>Your trend</th><th>Your change</th><th>Target trend</th><th>Target change</th><th>Latest gap (target vs you)</th><th>Comparison</th></tr>`;
+ EL.forEach(([e,l])=>{const a=tr3("o",e),b=tr3("t",e),lo=R("o",r)[e],lt=R("t",r)[e];
+  const gp=lo!=null&&lt!=null&&lo!==""&&lt!==""&&lo!=0?(lt-lo)/Math.abs(lo)*100:null;let vd="Enter target data",mg=.02;
+  if(gp!=null){const ya=a.ch==null?0:a.ch,tg=b.ch==null?0:b.ch;
+   if(gp>2){if(a.c.includes("declining")||ya<tg){vd="Gap widening: priority";mg=.05}else{vd="Behind but closing"}}
+   else if(gp<-2){vd=a.c.includes("declining")?"Ahead but declining: protect":"Ahead";mg=0}
+   else vd="On par"}
+  V[e]={vd,mg};
+  h+=`<tr><td>${l}</td><td class="${cls(a.c)}">${a.c}</td><td>${a.ch==null?"-":a.ch.toFixed(1)+"%"}</td><td class="${cls(b.c)}">${b.c}</td><td>${b.ch==null?"-":b.ch.toFixed(1)+"%"}</td><td>${gp==null?"-":(gp>0?"+":"")+gp.toFixed(1)+"%"}</td><td class="${vd.includes("priority")||vd.includes("protect")?"bad":""}">${vd}</td></tr>`});
+ h+=`</table></div><ul><li>Your consistently improving: ${ls("o",x=>x.c.includes("improving"))}.</li><li>Your consistently declining: ${ls("o",x=>x.c.includes("declining"))}.</li><li>Target consistently improving: ${ls("t",x=>x.c.includes("improving"))}.</li><li>Target consistently declining: ${ls("t",x=>x.c.includes("declining"))}.</li><li>Gaps widening (priority): ${EL.filter(([e])=>V[e].vd.includes("priority")).map(x=>x[1]).join("; ")||"none"}.</li></ul>`;
+ h+=`<h2 style="margin-top:16px">Suggested data elements to project for ${T}</h2><div class="t"><table><tr><th>Data element</th><th>Your projected ${T}</th><th>Target institute projected ${T}</th><th>Suggested for ${T}</th><th>Increase over your trend</th><th>Basis</th></tr>`;
+ const flags=[];
+ EL.forEach(([e,l,u])=>{const pc=u=="%",po=proj("o",e,T,pc),pt=proj("t",e,T,pc);const d=pt!=null&&po!=null?pt-po:null;
+  if(d!=null&&po>0&&d/po>.1)flags.push([l,po,pt,d/po]);else if(d!=null&&po==0&&pt>0)flags.push([l,po,pt,1]);
+  let sg=null,bs="-";
+  if(pt!=null&&(po==null||pt>po)){const m=V[e].mg||.02;sg=pt*(1+m);bs="Match target institute +"+Math.round(m*100)+"% ("+V[e].vd+")"}
+  else if(po!=null&&pt!=null){sg=po;bs="Keep own trend (already ahead)"}
+  else if(po!=null){sg=po*Math.min(1.25,Math.max(1,1+gap/cur));bs="Own trend + uplift (no target data)"}
+  if(sg!=null&&pc)sg=Math.min(100,sg);
+  const inc=sg!=null&&po!=null?sg-po:null;
+  h+=`<tr><td>${l}</td><td>${fmt(po)}</td><td>${fmt(pt)}</td><td><b>${fmt(sg)}</b></td><td class="${inc>0?"bad":"ok"}">${inc==null?"-":(inc>0?"+":"")+fmt(inc)}</td><td class="s">${bs}</td></tr>`});
+ h+=`</table></div><div class="s">The copilot compares your 3-year data with the target institute’s 3-year data, projects both to ${T} by straight-line trend (percentages kept between 0 and 100), and suggests the value to reach: match the target institute plus a 2% margin where it is ahead, keep your own trend where you are ahead, and add an uplift based on the overall score gap when no target data is entered.</div>`;
+ h+=`<h2 style="margin-top:16px">Copilot insights</h2><ul>`;
+ h+=`<li>Your overall score has moved about ${slope.toFixed(2)} marks per year; the target needs about ${perYr.toFixed(2)} per year${slope>0&&perYr>slope*1.5?", so treat it as a stretch target":""}.</li>`;
+ if(infeasible)h+=`<li class="bad">The target cannot be reached within the 90-point cap for each parameter by ${T}. Consider a later year or a nearer rank.</li>`;
+ [...P].sort((a,b)=>al[b]-al[a]).filter(p=>al[p]>.05).slice(0,3).forEach(p=>h+=`<li><b>${p}</b> (to ${(cr[p]+al[p]/W[p]).toFixed(1)}/100): ${LV[p]}</li>`);
+ if(flags.length){flags.sort((a,b)=>b[3]-a[3]);h+=`<li>Where the target institute is projected ahead of you in ${T}: ${flags.slice(0,6).map(f=>`${f[0]} (${fmt(f[1])} vs ${fmt(f[2])})`).join("; ")}.</li>`}
+ else h+=`<li>Enter the target institute data to see data-element gaps.</li>`;
+ h+=`<li>Roadmap: ${Array.from({length:n},(_,i)=>`${r+i+1}: overall about ${(cur+perYr*(i+1)).toFixed(2)}`).join("; ")}.</li>`;
+ h+=`<li class="s">Targets must be achieved through genuine improvement. NIRF data is verified and false data can lead to penalties.</li></ul>`;
+ o.innerHTML=h}
+async function readPdf(f){try{pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+ const d=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;let t="";
+ for(let i=1;i<=Math.min(d.numPages,8);i++){const pg=await(await d.getPage(i)).getTextContent();t+=pg.items.map(x=>x.str).join(" ")+" "}
+ const ym=t.match(/Rankings\s*'?(20\d\d)/i)||f.name.match(/(20\d\d)/);const g={};
+ if(t.includes("TLR"))P.forEach(p=>{const x=t.match(new RegExp("\\b"+(p=="RPC"?"(?:RPC|RP)":p)+"\\b[^0-9]{0,60}(\\d{1,3}(?:\\.\\d+)?)"));if(x&&+x[1]<=100)g[p]=+x[1]});
+ let m=t.match(/Number of faculty members entered\s*(\d+)/i);if(m)g.fac=+m[1];
+ m=t.match(/Full Time\s+(\d+)\s+Part Time\s+(\d+)/i);if(m)g.phd=+m[1];
+ m=t.match(/Full Time\s+(\d+)\s+(\d+)\s+(\d+)\s+Part Time\s+(\d+)\s+(\d+)\s+(\d+)/i);if(m)g.phdg=+((+m[1]+ +m[2]+ +m[3]+ +m[4]+ +m[5]+ +m[6])/3).toFixed(1);
+ return{y:ym?+ym[1]:null,g}}catch(e){return{err:1}}}
+function up(id,w){$(id).onchange=async e=>{const msg=[];
+ for(const f of e.target.files){const r=await readPdf(f);
+  if(r.err)msg.push(f.name+": could not read, enter manually");
+  else if(r.y&&Y3().includes(r.y)){Object.assign(R(w,r.y),r.g);msg.push(`${f.name}: ${r.y}, ${Object.keys(r.g).length} values found`)}
+  else msg.push(`${f.name}: year not in the 3-year table (${Y3().join(", ")}); enter manually`)}
+ $("st").textContent=msg.join(" | ")+". Please verify all values.";build()}}
+
+function fillTy(){const r=+$("ry").value;$("ty").innerHTML="";for(let i=1;i<=3;i++)$("ty").add(new Option(r+i,r+i))}
+document.addEventListener("input",e=>{const i=e.target,d=i.dataset;if(!d)return;const v=i.value===""?undefined:+i.value;
+ if(d.c){cut[$("cat").value+d.c]=v;calc()}else if(d.e){R(d.w,d.y)[d.e]=v;calc()}else if(["pr","tr","ty","dr","bf"].includes(i.id))calc()});
+document.addEventListener("change",e=>{const d=e.target.dataset;if(d&&d.ease){EASE[d.ease]=Math.min(1,Math.max(.05,+e.target.value||.5));calc()}});
+["cat","ry"].forEach(i=>$(i).onchange=()=>{fillTy();build()});
+try{const j=JSON.parse(localStorage.getItem("nirfcopilot")||"null");if(j){Object.assign(S,j.S);Object.assign(cut,j.cut);if(j.p){$("pr").value=j.p[0];$("tr").value=j.p[1]}}}catch(e){}
+fillTy();$("ty").value=2026;build();
+</script></body></html>
